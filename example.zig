@@ -14,7 +14,10 @@ const Args = struct {
 
 pub fn main() !void {
     const ator = std.heap.page_allocator;
-    const args = try argparse.parse(Args, ator);
+    const args = argparse.parse(Args, ator) catch |e| switch (e) {
+        error.UnknownOption => return std.process.exit(1),
+        else => return e,
+    };
     std.debug.print("{}\n", .{args.options});
     std.debug.print("Positionals: ", .{});
     for (args.positionals.items, 0..) |pos, i| {

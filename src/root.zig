@@ -3,6 +3,8 @@ const ArrayList = std.ArrayList;
 
 pub const Flag = bool;
 
+pub const Error = error{UnknownOption};
+
 pub fn writeError(comptime msg: []const u8, args: anytype) !void {
     const stderr = std.fs.File.stderr();
     var buf: [1024]u8 = undefined;
@@ -41,6 +43,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
             }
             // Starts with -- but is not a long option
             try writeError("Unknown option: {s}", .{arg});
+            return error.UnknownOption;
         }
         if (arg[0] == '-') {
             if (arg.len == 1) {
@@ -63,9 +66,11 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
                         }
                     }
                     try writeError("Unknown option: -{c}", .{c});
+                    return error.UnknownOption;
                 }
             } else {
                 try writeError("Unknown option: -{c}", .{arg[1]});
+                return error.UnknownOption;
             }
             continue;
         }
