@@ -18,6 +18,8 @@ pub fn main() !void {
         error.UnknownOption => return std.process.exit(1),
         else => return e,
     };
+    defer args.deinit();
+    std.debug.print("Self name: {?s}\n", .{args.self_name});
     std.debug.print("{}\n", .{args.options});
     std.debug.print("Positionals: ", .{});
     for (args.positionals.items, 0..) |pos, i| {

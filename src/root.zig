@@ -14,8 +14,25 @@ pub fn writeError(comptime msg: []const u8, args: anytype) !void {
 
 fn Parsed(Schema: type) type {
     return struct {
+        const Self = @This();
         options: Schema = .{},
         positionals: ArrayList([]const u8) = .empty,
+        arena: std.heap.ArenaAllocator,
+        self_name: ?[]const u8 = null,
+
+        pub fn init(ator: std.mem.Allocator) Self {
+            return .{
+                .arena = .init(ator),
+            };
+        }
+
+        pub fn deinit(self: Self) void {
+            self.arena.deinit();
+        }
+
+        fn allocString(self: *Self, str: []const u8) ![]const u8 {
+            return try self.arena.allocator().dupe(u8, str);
+        }
     };
 }
 
@@ -23,10 +40,12 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
     var args = try std.process.argsWithAllocator(ator);
     defer args.deinit();
 
-    const self_name = args.next() orelse "program-name";
-    _ = self_name;
+    var out = Parsed(Schema).init(ator);
 
-    var out = Parsed(Schema){};
+    if (args.next()) |self_name| {
+        out.self_name = try out.allocString(self_name);
+    }
+
     outer_loop: while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--")) {
             break;
