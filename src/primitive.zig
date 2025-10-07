@@ -2,7 +2,7 @@ const std = @import("std");
 const root = @import("root.zig");
 const utils = @import("utils.zig");
 
-pub const Class = enum { flag, int, uint, string };
+pub const Class = enum { flag, int, uint, string, choice };
 
 pub fn classify(T: type) ?Class {
     const Stripped = utils.Enforce(T);
@@ -15,6 +15,7 @@ pub fn classify(T: type) ?Class {
             .unsigned => return .uint,
         },
         .bool => return .flag,
+        .@"enum" => return .choice,
         else => return null,
     }
 }

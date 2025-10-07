@@ -1,23 +1,26 @@
 const std = @import("std");
 const argparse = @import("argparse");
 
-const Args = struct {
-    foo: ?[]const u8 = null,
-    bar: ?u32 = null,
+const Unary = enum { literally }; // 1984
+const Binary = enum { yes, no };
+const Ternary = enum { I, II, III };
+const IDontSpeakLatin = enum { A, B, C, D };
 
-    pub const shorthands = .{
-        .f = "foo",
-        .b = "bar",
-    };
+const Args = struct {
+    one: Unary = .literally,
+    two: Binary = .no,
+    three: Ternary = .I,
+    four: IDontSpeakLatin = .A,
+
+    pub const shorthands = .{};
 };
 
 pub fn main() !void {
     const ator = std.heap.page_allocator;
     const args = argparse.parse(Args, ator) catch |e| switch (e) {
         error.UnknownOption,
-        error.IntOverflow,
-        error.IntSyntax,
         error.MissingValues,
+        error.UnknownChoice,
         => return std.process.exit(1),
         else => return e,
     };

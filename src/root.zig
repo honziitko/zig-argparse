@@ -5,7 +5,7 @@ const utils = @import("utils.zig");
 
 pub const Flag = bool;
 
-pub const Error = error{ UnknownOption, IntOverflow, IntSyntax, MissingValues };
+pub const Error = error{ UnknownOption, IntOverflow, IntSyntax, MissingValues, UnknownChoice };
 
 pub fn writeError(comptime msg: []const u8, args: anytype) !void {
     const stderr = std.fs.File.stderr();
@@ -140,6 +140,34 @@ fn parseOption(T: type, name: []const u8, values_: ValueIterator, out_ator: std.
                 return error.MissingValues;
             };
             return try out_ator.dupe(u8, value);
+        },
+        .choice => {
+            const value = values.next() orelse {
+                try writeError("{s} expects 1 value", .{name});
+                return error.MissingValues;
+            };
+            const out = std.meta.stringToEnum(utils.Enforce(T), value);
+            if (out) |o| {
+                return o;
+            }
+            var buf: [1024]u8 = undefined;
+            var writer = std.Io.Writer.fixed(&buf);
+            const fields = std.meta.fields(T);
+            inline for (fields, 0..) |field, i| {
+                switch (fields.len) {
+                    1 => {}, // No comma can exist
+                    2 => { // No oxford comma in binary sets
+                        if (i == 1) try writer.writeAll(" or ");
+                    },
+                    else => {
+                        if (i > 0) try writer.writeAll(", ");
+                        if (i == fields.len - 1) try writer.writeAll("or ");
+                    },
+                }
+                try writer.writeAll(field.name);
+            }
+            try writeError("{s} must be one of: {s}", .{ name, writer.buffered() });
+            return error.UnknownChoice;
         },
     }
 }
