@@ -4,7 +4,7 @@ const argparse = @import("argparse");
 const Args = struct {
     foo: argparse.Flag = false,
     bar: argparse.Flag = false,
-    // baz: i32 = 69,
+    baz: u32 = 69,
 
     pub const shorthands = .{
         .f = "foo",
@@ -15,7 +15,11 @@ const Args = struct {
 pub fn main() !void {
     const ator = std.heap.page_allocator;
     const args = argparse.parse(Args, ator) catch |e| switch (e) {
-        error.UnknownOption => return std.process.exit(1),
+        error.UnknownOption,
+        error.IntOverflow,
+        error.IntSyntax,
+        error.MissingValues,
+        => return std.process.exit(1),
         else => return e,
     };
     defer args.deinit();

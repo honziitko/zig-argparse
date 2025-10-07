@@ -1,15 +1,23 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
+const primitive = @import("primitive.zig");
 
 pub const Flag = bool;
 
-pub const Error = error{UnknownOption};
+pub const Error = error{ UnknownOption, IntOverflow, IntSyntax, MissingValues };
 
 pub fn writeError(comptime msg: []const u8, args: anytype) !void {
     const stderr = std.fs.File.stderr();
     var buf: [1024]u8 = undefined;
     const full_message = try std.fmt.bufPrint(&buf, "Error: " ++ msg ++ "\n", args);
     try stderr.writeAll(full_message);
+}
+
+fn checkType(T: type) void {
+    const primitive_class = comptime primitive.classify(T);
+    if (primitive_class != null) return;
+    @compileLog(T, primitive_class);
+    @compileError(std.fmt.comptimePrint("Argument type {s} must be one of: bool, integer, []const u8", .{@typeName(T)}));
 }
 
 fn Parsed(Schema: type) type {
@@ -37,8 +45,9 @@ fn Parsed(Schema: type) type {
 }
 
 pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
-    var args = try std.process.argsWithAllocator(ator);
-    defer args.deinit();
+    var args_raw = try std.process.argsWithAllocator(ator);
+    defer args_raw.deinit();
+    var args = ArgsIterPeekable.init(&args_raw);
 
     var out = Parsed(Schema).init(ator);
 
@@ -54,9 +63,9 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
             inline for (std.meta.fields(Schema)) |field| {
                 const longopt = "--" ++ field.name;
                 const T = @FieldType(Schema, field.name);
-                comptime std.debug.assert(T == Flag); //TODO: add other types
-                if (std.mem.eql(u8, arg, longopt)) {
-                    @field(out.options, field.name) = true;
+                checkType(T);
+                if (std.mem.eql(u8, arg, longopt) or std.mem.startsWith(u8, arg, longopt ++ "=")) {
+                    @field(out.options, field.name) = try parseOption(T, longopt, ValueIterator.init(arg, &args));
                     continue :outer_loop;
                 }
             }
@@ -78,9 +87,9 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
                         const opt = field.name[0];
                         const longopt = @field(shorts, field.name);
                         const T = @FieldType(Schema, longopt);
-                        comptime std.debug.assert(T == Flag); //TODO: add other types
+                        checkType(T);
                         if (c == opt) {
-                            @field(out.options, longopt) = true;
+                            @field(out.options, longopt) = try parseOption(T, "-" ++ field.name, ValueIterator.init(arg, &args));
                             continue :char_loop;
                         }
                     }
@@ -102,3 +111,96 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
     }
     return out;
 }
+
+fn parseOption(T: type, name: []const u8, values_: ValueIterator) !T {
+    var values = values_;
+    const primitive_class = comptime primitive.classify(T).?;
+    switch (primitive_class) {
+        .flag => {
+            return true;
+        },
+        .int => {
+            const value = values.next() orelse {
+                try writeError("{s} expects 1 value", .{name});
+                return error.MissingValues;
+            };
+            return try primitive.parseInt(T, value, name);
+        },
+        .uint => {
+            const value = values.next() orelse {
+                try writeError("{s} expects 1 value", .{name});
+                return error.MissingValues;
+            };
+            return try primitive.parseUint(T, value, name);
+        },
+        else => @compileError("TODO"),
+    }
+}
+
+///Iterate values of an argument. That is, the stream
+///---key=X Y -Z
+///would output X, Y, and halt..
+const ValueIterator = struct {
+    // Unparsed options of type --key=value
+    equals_rest: []const u8,
+    args: *ArgsIterPeekable,
+
+    pub fn init(name: []const u8, args: *ArgsIterPeekable) ValueIterator {
+        const equals_start = std.mem.indexOfScalar(u8, name, '=');
+        var equals_rest: []const u8 = "";
+        if (equals_start) |eq_start| {
+            equals_rest = name[eq_start + 1 ..];
+        }
+        return .{
+            .equals_rest = equals_rest,
+            .args = args,
+        };
+    }
+
+    fn isOption(arg: []const u8) bool {
+        if (std.mem.startsWith(u8, arg, "--")) return true; //While -- is not an option, we should ignore it
+        if (arg[0] == '-') return arg.len > 1;
+        return false;
+    }
+
+    pub fn next(self: *ValueIterator) ?[]const u8 {
+        if (self.equals_rest.len > 0) {
+            const equals_pos = std.mem.indexOfScalar(u8, self.equals_rest, '=');
+            if (equals_pos) |eq_pos| {
+                const out = self.equals_rest[0..eq_pos];
+                self.equals_rest = self.equals_rest[eq_pos + 1 ..];
+                return out;
+            } else {
+                const out = self.equals_rest;
+                self.equals_rest = "";
+                return out;
+            }
+        }
+        const next_arg = self.args.peek() orelse return null;
+        if (isOption(next_arg)) return null;
+        _ = self.args.next();
+        return next_arg;
+    }
+};
+
+const ArgsIterPeekable = struct {
+    underlying_iter: *std.process.ArgIterator,
+    cursor: ?[]const u8,
+
+    pub fn init(args: *std.process.ArgIterator) ArgsIterPeekable {
+        return .{
+            .underlying_iter = args,
+            .cursor = args.next(),
+        };
+    }
+
+    pub fn peek(self: ArgsIterPeekable) ?[]const u8 {
+        return self.cursor;
+    }
+
+    pub fn next(self: *ArgsIterPeekable) ?[]const u8 {
+        const out = self.cursor;
+        self.cursor = self.underlying_iter.next();
+        return out;
+    }
+};
