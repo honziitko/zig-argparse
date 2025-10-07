@@ -65,7 +65,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
                 const T = @FieldType(Schema, field.name);
                 checkType(T);
                 if (std.mem.eql(u8, arg, longopt) or std.mem.startsWith(u8, arg, longopt ++ "=")) {
-                    @field(out.options, field.name) = try parseOption(T, longopt, ValueIterator.init(arg, &args));
+                    @field(out.options, field.name) = try parseOption(T, longopt, ValueIterator.init(arg, &args), out.arena.allocator());
                     continue :outer_loop;
                 }
             }
@@ -89,7 +89,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
                         const T = @FieldType(Schema, longopt);
                         checkType(T);
                         if (c == opt) {
-                            @field(out.options, longopt) = try parseOption(T, "-" ++ field.name, ValueIterator.init(arg, &args));
+                            @field(out.options, longopt) = try parseOption(T, "-" ++ field.name, ValueIterator.init(arg, &args), out.arena.allocator());
                             continue :char_loop;
                         }
                     }
@@ -112,7 +112,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
     return out;
 }
 
-fn parseOption(T: type, name: []const u8, values_: ValueIterator) !T {
+fn parseOption(T: type, name: []const u8, values_: ValueIterator, out_ator: std.mem.Allocator) !T {
     var values = values_;
     const primitive_class = comptime primitive.classify(T).?;
     switch (primitive_class) {
@@ -133,7 +133,13 @@ fn parseOption(T: type, name: []const u8, values_: ValueIterator) !T {
             };
             return try primitive.parseUint(T, value, name);
         },
-        else => @compileError("TODO"),
+        .string => {
+            const value = values.next() orelse {
+                try writeError("{s} expects 1 value", .{name});
+                return error.MissingValues;
+            };
+            return try out_ator.dupe(u8, value);
+        },
     }
 }
 

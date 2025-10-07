@@ -2,9 +2,8 @@ const std = @import("std");
 const argparse = @import("argparse");
 
 const Args = struct {
-    foo: argparse.Flag = false,
-    bar: argparse.Flag = false,
-    baz: u32 = 69,
+    foo: []const u8 = "",
+    bar: u32 = 69,
 
     pub const shorthands = .{
         .f = "foo",
