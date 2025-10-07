@@ -1,6 +1,7 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
 const primitive = @import("primitive.zig");
+const utils = @import("utils.zig");
 
 pub const Flag = bool;
 
@@ -124,14 +125,14 @@ fn parseOption(T: type, name: []const u8, values_: ValueIterator, out_ator: std.
                 try writeError("{s} expects 1 value", .{name});
                 return error.MissingValues;
             };
-            return try primitive.parseInt(T, value, name);
+            return try primitive.parseInt(utils.Enforce(T), value, name);
         },
         .uint => {
             const value = values.next() orelse {
                 try writeError("{s} expects 1 value", .{name});
                 return error.MissingValues;
             };
-            return try primitive.parseUint(T, value, name);
+            return try primitive.parseUint(utils.Enforce(T), value, name);
         },
         .string => {
             const value = values.next() orelse {

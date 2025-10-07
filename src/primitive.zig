@@ -1,13 +1,15 @@
 const std = @import("std");
 const root = @import("root.zig");
+const utils = @import("utils.zig");
 
 pub const Class = enum { flag, int, uint, string };
 
 pub fn classify(T: type) ?Class {
-    if (T == []const u8) {
+    const Stripped = utils.Enforce(T);
+    if (Stripped == []const u8) {
         return .string;
     }
-    switch (@typeInfo(T)) {
+    switch (@typeInfo(Stripped)) {
         .int => |int| switch (int.signedness) {
             .signed => return .int,
             .unsigned => return .uint,

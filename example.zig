@@ -2,8 +2,8 @@ const std = @import("std");
 const argparse = @import("argparse");
 
 const Args = struct {
-    foo: []const u8 = "",
-    bar: u32 = 69,
+    foo: ?[]const u8 = null,
+    bar: ?u32 = null,
 
     pub const shorthands = .{
         .f = "foo",
