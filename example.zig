@@ -1,16 +1,31 @@
 const std = @import("std");
 const argparse = @import("argparse");
 
-const Unary = enum { literally }; // 1984
-const Binary = enum { yes, no };
-const Ternary = enum { I, II, III };
-const IDontSpeakLatin = enum { A, B, C, D };
+const T = struct {
+    value: usize = 0,
+
+    pub fn parse(args: *argparse.ValueIterator, name: []const u8) !T {
+        const arg = args.next() orelse {
+            try argparse.writeError("{s} expects 1 value", .{name});
+            return error.MissingValues;
+        };
+        return T{
+            .value = arg.len,
+        };
+    }
+};
+
+const U = struct {};
+
+const V = struct {
+    pub fn parse(_: i32) V {
+        return undefined;
+    }
+};
 
 const Args = struct {
-    one: Unary = .literally,
-    two: Binary = .no,
-    three: Ternary = .I,
-    four: IDontSpeakLatin = .A,
+    foo: ?T = null,
+    bar: ?u32 = null,
 
     pub const shorthands = .{};
 };
@@ -20,7 +35,6 @@ pub fn main() !void {
     const args = argparse.parse(Args, ator) catch |e| switch (e) {
         error.UnknownOption,
         error.MissingValues,
-        error.UnknownChoice,
         => return std.process.exit(1),
         else => return e,
     };

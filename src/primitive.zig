@@ -5,11 +5,10 @@ const utils = @import("utils.zig");
 pub const Class = enum { flag, int, uint, string, choice };
 
 pub fn classify(T: type) ?Class {
-    const Stripped = utils.Enforce(T);
-    if (Stripped == []const u8) {
+    if (T == []const u8) {
         return .string;
     }
-    switch (@typeInfo(Stripped)) {
+    switch (@typeInfo(T)) {
         .int => |int| switch (int.signedness) {
             .signed => return .int,
             .unsigned => return .uint,

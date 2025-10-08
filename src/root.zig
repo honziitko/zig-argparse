@@ -15,10 +15,25 @@ pub fn writeError(comptime msg: []const u8, args: anytype) !void {
 }
 
 fn checkType(T: type) void {
-    const primitive_class = comptime primitive.classify(T);
+    const Base = utils.Enforce(T);
+    const primitive_class = comptime primitive.classify(Base);
     if (primitive_class != null) return;
-    @compileLog(T, primitive_class);
-    @compileError(std.fmt.comptimePrint("Argument type {s} must be one of: bool, integer, []const u8", .{@typeName(T)}));
+    if (comptime isCustomParsable(Base)) return;
+    @compileError(std.fmt.comptimePrint("Argument type {s} must be one of: bool, integer, []const u8, or adhere to the interface", .{@typeName(T)}));
+}
+
+fn isCustomParsable(T: type) bool {
+    switch (@typeInfo(T)) {
+        .@"struct",
+        .@"union",
+        .@"enum",
+        => {},
+        else => return false,
+    }
+    if (!@hasDecl(T, "parse")) {
+        return false;
+    }
+    return utils.checkFunctionConforms(@TypeOf(T.parse), &[_]type{ *ValueIterator, []const u8 }, T);
 }
 
 fn Parsed(Schema: type) type {
@@ -115,67 +130,72 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
 
 fn parseOption(T: type, name: []const u8, values_: ValueIterator, out_ator: std.mem.Allocator) !T {
     var values = values_;
-    const primitive_class = comptime primitive.classify(T).?;
-    switch (primitive_class) {
-        .flag => {
-            return true;
-        },
-        .int => {
-            const value = values.next() orelse {
-                try writeError("{s} expects 1 value", .{name});
-                return error.MissingValues;
-            };
-            return try primitive.parseInt(utils.Enforce(T), value, name);
-        },
-        .uint => {
-            const value = values.next() orelse {
-                try writeError("{s} expects 1 value", .{name});
-                return error.MissingValues;
-            };
-            return try primitive.parseUint(utils.Enforce(T), value, name);
-        },
-        .string => {
-            const value = values.next() orelse {
-                try writeError("{s} expects 1 value", .{name});
-                return error.MissingValues;
-            };
-            return try out_ator.dupe(u8, value);
-        },
-        .choice => {
-            const value = values.next() orelse {
-                try writeError("{s} expects 1 value", .{name});
-                return error.MissingValues;
-            };
-            const out = std.meta.stringToEnum(utils.Enforce(T), value);
-            if (out) |o| {
-                return o;
-            }
-            var buf: [1024]u8 = undefined;
-            var writer = std.Io.Writer.fixed(&buf);
-            const fields = std.meta.fields(T);
-            inline for (fields, 0..) |field, i| {
-                switch (fields.len) {
-                    1 => {}, // No comma can exist
-                    2 => { // No oxford comma in binary sets
-                        if (i == 1) try writer.writeAll(" or ");
-                    },
-                    else => {
-                        if (i > 0) try writer.writeAll(", ");
-                        if (i == fields.len - 1) try writer.writeAll("or ");
-                    },
+    const Base = utils.Enforce(T);
+    const primitive_class = comptime primitive.classify(Base);
+    if (primitive_class) |prim_class| {
+        switch (prim_class) {
+            .flag => {
+                return true;
+            },
+            .int => {
+                const value = values.next() orelse {
+                    try writeError("{s} expects 1 value", .{name});
+                    return error.MissingValues;
+                };
+                return try primitive.parseInt(Base, value, name);
+            },
+            .uint => {
+                const value = values.next() orelse {
+                    try writeError("{s} expects 1 value", .{name});
+                    return error.MissingValues;
+                };
+                return try primitive.parseUint(Base, value, name);
+            },
+            .string => {
+                const value = values.next() orelse {
+                    try writeError("{s} expects 1 value", .{name});
+                    return error.MissingValues;
+                };
+                return try out_ator.dupe(u8, value);
+            },
+            .choice => {
+                const value = values.next() orelse {
+                    try writeError("{s} expects 1 value", .{name});
+                    return error.MissingValues;
+                };
+                const out = std.meta.stringToEnum(Base, value);
+                if (out) |o| {
+                    return o;
                 }
-                try writer.writeAll(field.name);
-            }
-            try writeError("{s} must be one of: {s}", .{ name, writer.buffered() });
-            return error.UnknownChoice;
-        },
+                var buf: [1024]u8 = undefined;
+                var writer = std.Io.Writer.fixed(&buf);
+                const fields = std.meta.fields(Base);
+                inline for (fields, 0..) |field, i| {
+                    switch (fields.len) {
+                        1 => {}, // No comma can exist
+                        2 => { // No oxford comma in binary sets
+                            if (i == 1) try writer.writeAll(" or ");
+                        },
+                        else => {
+                            if (i > 0) try writer.writeAll(", ");
+                            if (i == fields.len - 1) try writer.writeAll("or ");
+                        },
+                    }
+                    try writer.writeAll(field.name);
+                }
+                try writeError("{s} must be one of: {s}", .{ name, writer.buffered() });
+                return error.UnknownChoice;
+            },
+        }
+    } else {
+        return try Base.parse(&values, name);
     }
 }
 
 ///Iterate values of an argument. That is, the stream
 ///---key=X Y -Z
-///would output X, Y, and halt..
-const ValueIterator = struct {
+///would output X, Y, and halt.
+pub const ValueIterator = struct {
     // Unparsed options of type --key=value
     equals_rest: []const u8,
     args: *ArgsIterPeekable,
