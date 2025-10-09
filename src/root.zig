@@ -60,6 +60,10 @@ fn Parsed(Schema: type) type {
     };
 }
 
+const ParseParams = struct {
+    output_ator: std.mem.Allocator,
+};
+
 pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
     var args_raw = try std.process.argsWithAllocator(ator);
     defer args_raw.deinit();
@@ -71,6 +75,10 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
         out.self_name = try out.allocString(self_name);
     }
 
+    const parse_params = ParseParams{
+        .output_ator = out.arena.allocator(),
+    };
+
     outer_loop: while (args.next()) |arg| {
         if (std.mem.eql(u8, arg, "--")) {
             break;
@@ -81,7 +89,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
                 const T = @FieldType(Schema, field.name);
                 checkType(T);
                 if (std.mem.eql(u8, arg, longopt) or std.mem.startsWith(u8, arg, longopt ++ "=")) {
-                    @field(out.options, field.name) = try parseOption(T, longopt, ValueIterator.init(arg, &args), out.arena.allocator());
+                    @field(out.options, field.name) = try parseOption(T, longopt, ValueIterator.init(arg, &args), parse_params);
                     continue :outer_loop;
                 }
             }
@@ -105,7 +113,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
                         const T = @FieldType(Schema, longopt);
                         checkType(T);
                         if (c == opt) {
-                            @field(out.options, longopt) = try parseOption(T, "-" ++ field.name, ValueIterator.init(arg, &args), out.arena.allocator());
+                            @field(out.options, longopt) = try parseOption(T, "-" ++ field.name, ValueIterator.init(arg, &args), parse_params);
                             continue :char_loop;
                         }
                     }
@@ -128,7 +136,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
     return out;
 }
 
-fn parseOption(T: type, name: []const u8, values_: ValueIterator, out_ator: std.mem.Allocator) !T {
+fn parseOption(T: type, name: []const u8, values_: ValueIterator, params: ParseParams) !T {
     var values = values_;
     const Base = utils.Enforce(T);
     const primitive_class = comptime primitive.classify(Base);
@@ -156,7 +164,7 @@ fn parseOption(T: type, name: []const u8, values_: ValueIterator, out_ator: std.
                     try writeError("{s} expects 1 value", .{name});
                     return error.MissingValues;
                 };
-                return try out_ator.dupe(u8, value);
+                return try params.output_ator.dupe(u8, value);
             },
             .choice => {
                 const value = values.next() orelse {
