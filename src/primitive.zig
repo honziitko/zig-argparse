@@ -19,31 +19,31 @@ pub fn classify(T: type) ?Class {
     }
 }
 
-pub fn parseInt(T: type, arg: []const u8, name: []const u8) !T {
+pub fn parseInt(T: type, arg: []const u8, name: []const u8, error_writer: *std.Io.Writer) !T {
     return std.fmt.parseInt(T, arg, 0) catch |e| switch (e) {
         error.Overflow => {
-            try root.writeError("Integer {s} is too big", .{arg});
+            try root.writeError(error_writer, "Integer {s} is too big", .{arg});
             return error.IntOverflow;
         },
         error.InvalidCharacter => {
-            try root.writeError("{s} accepts an integer", .{name});
+            try root.writeError(error_writer, "{s} accepts an integer", .{name});
             return error.IntSyntax;
         },
     };
 }
 
-pub fn parseUint(T: type, arg: []const u8, name: []const u8) !T {
+pub fn parseUint(T: type, arg: []const u8, name: []const u8, error_writer: *std.Io.Writer) !T {
     return std.fmt.parseInt(T, arg, 0) catch |e| switch (e) {
         error.Overflow => {
             if (arg.len > 0 and arg[0] == '-') {
-                try root.writeError("{s} must be positive", .{name});
+                try root.writeError(error_writer, "{s} must be positive", .{name});
             } else {
-                try root.writeError("Integer {s} is too big", .{arg});
+                try root.writeError(error_writer, "Integer {s} is too big", .{arg});
             }
             return error.IntOverflow;
         },
         error.InvalidCharacter => {
-            try root.writeError("{s} accepts an unsigned integer", .{name});
+            try root.writeError(error_writer, "{s} accepts an unsigned integer", .{name});
             return error.IntSyntax;
         },
     };

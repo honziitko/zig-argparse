@@ -4,11 +4,12 @@ const argparse = @import("argparse");
 const T = struct {
     value: usize = 0,
 
-    pub fn parse(args: *argparse.ValueIterator, name: []const u8) !T {
+    pub fn parse(args: *argparse.ValueIterator, name: []const u8, error_writer: *std.Io.Writer) !T {
         const arg = args.next() orelse {
-            try argparse.writeError("{s} expects 1 value", .{name});
+            try argparse.writeError(error_writer, "{s} expects 1 value", .{name});
             return error.MissingValues;
         };
+        std.debug.print("Arg: \"{s}\"\n", .{arg});
         return T{
             .value = arg.len,
         };
@@ -35,7 +36,7 @@ pub fn main() !void {
     const args = argparse.parse(Args, ator) catch |e| switch (e) {
         error.UnknownOption,
         error.MissingValues,
-        => return std.process.exit(1),
+        => std.process.exit(1),
         else => return e,
     };
     defer args.deinit();

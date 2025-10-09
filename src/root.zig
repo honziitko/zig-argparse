@@ -7,11 +7,8 @@ pub const Flag = bool;
 
 pub const Error = error{ UnknownOption, IntOverflow, IntSyntax, MissingValues, UnknownChoice };
 
-pub fn writeError(comptime msg: []const u8, args: anytype) !void {
-    const stderr = std.fs.File.stderr();
-    var buf: [1024]u8 = undefined;
-    const full_message = try std.fmt.bufPrint(&buf, "Error: " ++ msg ++ "\n", args);
-    try stderr.writeAll(full_message);
+pub fn writeError(writer: *std.Io.Writer, comptime msg: []const u8, args: anytype) !void {
+    try writer.print("Error: " ++ msg ++ "\n", args);
 }
 
 fn checkType(T: type) void {
@@ -33,7 +30,7 @@ fn isCustomParsable(T: type) bool {
     if (!@hasDecl(T, "parse")) {
         return false;
     }
-    return utils.checkFunctionConforms(@TypeOf(T.parse), &[_]type{ *ValueIterator, []const u8 }, T);
+    return utils.checkFunctionConforms(@TypeOf(T.parse), &[_]type{ *ValueIterator, []const u8, *std.Io.Writer }, T);
 }
 
 fn Parsed(Schema: type) type {
@@ -62,9 +59,20 @@ fn Parsed(Schema: type) type {
 
 const ParseParams = struct {
     output_ator: std.mem.Allocator,
+    error_writer: *std.Io.Writer,
 };
 
 pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
+    var buf: [4096]u8 = undefined;
+    var stderr_impl = std.fs.File.stderr().writer(&buf);
+    const stderr = &stderr_impl.interface;
+    return parseGeneric(Schema, stderr, ator) catch |e| {
+        try stderr.flush();
+        return e;
+    };
+}
+
+pub fn parseGeneric(Schema: type, error_writer: *std.Io.Writer, ator: std.mem.Allocator) !Parsed(Schema) {
     var args_raw = try std.process.argsWithAllocator(ator);
     defer args_raw.deinit();
     var args = ArgsIterPeekable.init(&args_raw);
@@ -77,6 +85,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
 
     const parse_params = ParseParams{
         .output_ator = out.arena.allocator(),
+        .error_writer = error_writer,
     };
 
     outer_loop: while (args.next()) |arg| {
@@ -94,7 +103,7 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
                 }
             }
             // Starts with -- but is not a long option
-            try writeError("Unknown option: {s}", .{arg});
+            try writeError(error_writer, "Unknown option: {s}", .{arg});
             return error.UnknownOption;
         }
         if (arg[0] == '-') {
@@ -117,11 +126,11 @@ pub fn parse(Schema: type, ator: std.mem.Allocator) !Parsed(Schema) {
                             continue :char_loop;
                         }
                     }
-                    try writeError("Unknown option: -{c}", .{c});
+                    try writeError(error_writer, "Unknown option: -{c}", .{c});
                     return error.UnknownOption;
                 }
             } else {
-                try writeError("Unknown option: -{c}", .{arg[1]});
+                try writeError(error_writer, "Unknown option: -{c}", .{arg[1]});
                 return error.UnknownOption;
             }
             continue;
@@ -147,28 +156,28 @@ fn parseOption(T: type, name: []const u8, values_: ValueIterator, params: ParseP
             },
             .int => {
                 const value = values.next() orelse {
-                    try writeError("{s} expects 1 value", .{name});
+                    try writeError(params.error_writer, "{s} expects 1 value", .{name});
                     return error.MissingValues;
                 };
-                return try primitive.parseInt(Base, value, name);
+                return try primitive.parseInt(Base, value, name, params.error_writer);
             },
             .uint => {
                 const value = values.next() orelse {
-                    try writeError("{s} expects 1 value", .{name});
+                    try writeError(params.error_writer, "{s} expects 1 value", .{name});
                     return error.MissingValues;
                 };
-                return try primitive.parseUint(Base, value, name);
+                return try primitive.parseUint(Base, value, name, params.error_writer);
             },
             .string => {
                 const value = values.next() orelse {
-                    try writeError("{s} expects 1 value", .{name});
+                    try writeError(params.error_writer, "{s} expects 1 value", .{name});
                     return error.MissingValues;
                 };
                 return try params.output_ator.dupe(u8, value);
             },
             .choice => {
                 const value = values.next() orelse {
-                    try writeError("{s} expects 1 value", .{name});
+                    try writeError(params.error_writer, "{s} expects 1 value", .{name});
                     return error.MissingValues;
                 };
                 const out = std.meta.stringToEnum(Base, value);
@@ -191,12 +200,12 @@ fn parseOption(T: type, name: []const u8, values_: ValueIterator, params: ParseP
                     }
                     try writer.writeAll(field.name);
                 }
-                try writeError("{s} must be one of: {s}", .{ name, writer.buffered() });
+                try writeError(params.error_writer, "{s} must be one of: {s}", .{ name, writer.buffered() });
                 return error.UnknownChoice;
             },
         }
     } else {
-        return try Base.parse(&values, name);
+        return try Base.parse(&values, name, params.error_writer);
     }
 }
 
