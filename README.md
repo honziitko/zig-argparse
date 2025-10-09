@@ -23,6 +23,7 @@ However, it does not support either of those features mentioned.
   - [x] Arbitrary arity
   - [ ] Stateful types (e.g. verbosity in ssh)
   - [ ] Positional-bound arguments
+  - [ ] `--help` and usage
 
 # Documentation
 
