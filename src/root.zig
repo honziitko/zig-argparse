@@ -259,3 +259,8 @@ const ArgsIterPeekable = struct {
         return out;
     }
 };
+
+test {
+    _ = @import("primitive.zig");
+    _ = @import("utils.zig");
+}

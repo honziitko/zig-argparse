@@ -48,3 +48,16 @@ pub fn parseUint(T: type, arg: []const u8, name: []const u8) !T {
         },
     };
 }
+
+const testing = std.testing;
+test "classification" {
+    const complex = [_]type{ type, void, noreturn, *i32, [2]u8, struct {}, comptime_float, comptime_int, @TypeOf(undefined), ?i32, error{}!i32, error{}, union {}, fn () void, @Vector(2, i32), @TypeOf(.enum_literal) };
+    inline for (complex) |T| {
+        try testing.expectEqual(null, classify(T));
+    }
+    try testing.expectEqual(.flag, classify(bool));
+    try testing.expectEqual(.int, classify(i32));
+    try testing.expectEqual(.uint, classify(u32));
+    try testing.expectEqual(.string, classify([]const u8));
+    try testing.expectEqual(.choice, classify(enum {}));
+}

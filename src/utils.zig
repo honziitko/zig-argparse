@@ -20,6 +20,24 @@ pub fn checkFunctionConforms(T: type, Args: []const type, Return: type) bool {
     }
     switch (@typeInfo(info.return_type.?)) {
         .error_union => |err_union| return err_union.payload == Return,
-        else => false,
+        else => return false,
     }
+}
+
+const testing = @import("std").testing;
+test "Enforce" {
+    try testing.expectEqual(i32, Enforce(i32));
+    try testing.expectEqual(i32, Enforce(?i32));
+    const E = error{};
+    try testing.expectEqual(E!i32, Enforce(E!i32));
+}
+
+test "checkFunctionConforms" {
+    const E = error{ A, B, C };
+    try testing.expect(checkFunctionConforms(fn (i32) E!i32, &[_]type{i32}, i32));
+    try testing.expect(!checkFunctionConforms(fn (u8) E!i32, &[_]type{i32}, i32));
+    try testing.expect(!checkFunctionConforms(fn (i32) E!u8, &[_]type{i32}, i32));
+    try testing.expect(!checkFunctionConforms(fn (u8) E!u32, &[_]type{i32}, i32));
+    try testing.expect(!checkFunctionConforms(fn (i32, i32) E!i32, &[_]type{i32}, i32));
+    try testing.expect(!checkFunctionConforms(fn (i32) i32, &[_]type{i32}, i32));
 }

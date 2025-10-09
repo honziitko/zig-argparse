@@ -28,4 +28,13 @@ pub fn build(b: *std.Build) void {
 
     const run_step = b.step("run", "Run the example");
     run_step.dependOn(&run_example.step);
+
+    const unit_tests = b.addTest(.{
+        .root_module = argparse,
+    });
+
+    const run_units_tests = b.addRunArtifact(unit_tests);
+
+    const test_step = b.step("test", "Run tests");
+    test_step.dependOn(&run_units_tests.step);
 }
